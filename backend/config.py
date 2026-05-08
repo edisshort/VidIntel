@@ -57,19 +57,15 @@ CHROMA_PORT: int = int(os.getenv("CHROMA_PORT", "8001"))
 CHROMA_MODE: str = os.getenv("CHROMA_MODE", "local")   # "local" | "remote"
 
 # ─── YouTube Cookies (for server deployments blocked by YouTube bot detection) ─
-# Paste full cookies.txt content into the YOUTUBE_COOKIES env var on Render.
-# Export from your browser using "Get cookies.txt LOCALLY" Chrome extension.
-import tempfile as _tempfile
-
 YOUTUBE_COOKIES_FILE: Optional[str] = None
 _cookies_content = os.getenv("YOUTUBE_COOKIES", "").strip()
 if _cookies_content:
-    _cookie_file = _tempfile.NamedTemporaryFile(
-        mode="w", suffix=".txt", delete=False
-    )
-    _cookie_file.write(_cookies_content)
-    _cookie_file.flush()
-    YOUTUBE_COOKIES_FILE = _cookie_file.name
+    _cookie_path = DATA_DIR / "yt_cookies.txt"
+    _cookie_path.write_text(_cookies_content)
+    YOUTUBE_COOKIES_FILE = str(_cookie_path)
+    print(f"[Config] YouTube cookies loaded → {_cookie_path}")
+else:
+    print("[Config] No YOUTUBE_COOKIES env var set — bot detection may block downloads")
 
 # ─── App ───────────────────────────────────────────────────────────────────────
 APP_VERSION: str = "1.0.0"
