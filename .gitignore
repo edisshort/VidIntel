@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# Environment
+.env
+backend/.env
+frontend/.env.local
+
+# Data (don't commit ingested video data)
+backend/data/frames/
+backend/data/transcripts/
+backend/data/chroma/
+backend/data/video_registry.json
+
+# Node
+node_modules/
+frontend/.next/
+frontend/out/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp

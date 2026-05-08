@@ -1,0 +1,36 @@
+services:
+  - type: web
+    name: vidIntel-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: starter
+    disk:
+      name: vidIntel-data
+      mountPath: /app/data
+      sizeGB: 1
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: llama-3.3-70b-versatile
+      - key: GROQ_MAX_TOKENS
+        value: "4096"
+      - key: GROQ_TEMPERATURE
+        value: "0.1"
+      - key: EMBEDDING_MODEL
+        value: BAAI/bge-small-en-v1.5
+      - key: DEFAULT_TOP_K
+        value: "5"
+      - key: HYBRID_ALPHA
+        value: "0.5"
+      - key: FRAME_INTERVAL_SEC
+        value: "30"
+      - key: OCR_ENGINE
+        value: easyocr
+      - key: OCR_MIN_CONFIDENCE
+        value: "0.5"
+      - key: CHROMA_MODE
+        value: local
+      - key: CORS_ORIGINS
+        sync: false

@@ -1,0 +1,40 @@
+# ─── Build tooling (required for Python 3.13 compatibility) ───────────────────
+setuptools>=75.0.0
+
+# ─── Web Framework ─────────────────────────────────────────────────────────────
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-multipart==0.0.9
+
+# ─── LLM ───────────────────────────────────────────────────────────────────────
+groq==0.11.0
+
+# ─── Embeddings & RAG ──────────────────────────────────────────────────────────
+sentence-transformers==3.2.0
+chromadb==0.5.20
+rank-bm25==0.2.2
+
+# ─── Video / Transcript ────────────────────────────────────────────────────────
+yt-dlp>=2024.11.4
+# No local Whisper model needed — uses Groq's Whisper API as fallback
+# (same GROQ_API_KEY, no FFmpeg build deps, no av/ctranslate2 compile issues)
+
+# ─── Frame Extraction ──────────────────────────────────────────────────────────
+opencv-python-headless==4.10.0.84
+
+# ─── OCR ───────────────────────────────────────────────────────────────────────
+easyocr==1.7.1
+# Alternative: pytesseract + Pillow (install Tesseract separately)
+# pytesseract==0.3.13
+# Pillow==10.4.0
+
+# ─── Data & Utilities ──────────────────────────────────────────────────────────
+pydantic==2.9.2
+python-dotenv==1.0.1
+aiofiles==24.1.0
+numpy>=1.26.0,<2.0.0
+
+# ─── Development ───────────────────────────────────────────────────────────────
+httpx==0.27.2
+pytest==8.3.3
+pytest-asyncio==0.24.0

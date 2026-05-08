@@ -1,0 +1,25 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --accent: #6366f1;
+  --accent-hover: #4f46e5;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #111827; }
+::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #4B5563; }
+
+/* Markdown answer formatting */
+.answer-content h1,
+.answer-content h2,
+.answer-content h3 { @apply font-bold text-white mb-2 mt-4; }
+.answer-content h2 { @apply text-lg; }
+.answer-content h3 { @apply text-base text-indigo-300; }
+.answer-content p { @apply mb-3 text-gray-300 leading-relaxed; }
+.answer-content ul { @apply list-disc list-inside mb-3 text-gray-300 space-y-1; }
+.answer-content strong { @apply text-white font-semibold; }
+.answer-content code { @apply bg-gray-800 text-indigo-300 px-1.5 py-0.5 rounded text-sm font-mono; }
