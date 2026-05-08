@@ -5,6 +5,7 @@ Copy .env.example to .env and fill in your keys before running.
 
 import os
 from pathlib import Path
+from typing import Optional
 from dotenv import load_dotenv
 
 # Look for .env in backend/ first, then fall back to parent (project root)
@@ -54,6 +55,21 @@ OCR_MIN_CONFIDENCE: float = float(os.getenv("OCR_MIN_CONFIDENCE", "0.5"))
 CHROMA_HOST: str = os.getenv("CHROMA_HOST", "localhost")
 CHROMA_PORT: int = int(os.getenv("CHROMA_PORT", "8001"))
 CHROMA_MODE: str = os.getenv("CHROMA_MODE", "local")   # "local" | "remote"
+
+# ─── YouTube Cookies (for server deployments blocked by YouTube bot detection) ─
+# Paste full cookies.txt content into the YOUTUBE_COOKIES env var on Render.
+# Export from your browser using "Get cookies.txt LOCALLY" Chrome extension.
+import tempfile as _tempfile
+
+YOUTUBE_COOKIES_FILE: Optional[str] = None
+_cookies_content = os.getenv("YOUTUBE_COOKIES", "").strip()
+if _cookies_content:
+    _cookie_file = _tempfile.NamedTemporaryFile(
+        mode="w", suffix=".txt", delete=False
+    )
+    _cookie_file.write(_cookies_content)
+    _cookie_file.flush()
+    YOUTUBE_COOKIES_FILE = _cookie_file.name
 
 # ─── App ───────────────────────────────────────────────────────────────────────
 APP_VERSION: str = "1.0.0"

@@ -4,13 +4,12 @@ Uses yt-dlp to extract metadata and audio from YouTube (and other platforms).
 """
 
 import json
-import subprocess
 import re
 from pathlib import Path
 from typing import Optional
 import yt_dlp
 
-from config import TRANSCRIPTS_DIR
+from config import TRANSCRIPTS_DIR, YOUTUBE_COOKIES_FILE
 
 
 def sanitize_id(url: str) -> str:
@@ -23,19 +22,21 @@ def sanitize_id(url: str) -> str:
         m = re.search(pat, url)
         if m:
             return m.group(1)
-    # Fallback: hash the URL
     import hashlib
     return hashlib.md5(url.encode()).hexdigest()[:11]
 
 
+def _base_opts() -> dict:
+    """Base yt-dlp options shared across all calls (includes cookies if set)."""
+    opts = {"quiet": True, "no_warnings": True}
+    if YOUTUBE_COOKIES_FILE:
+        opts["cookiefile"] = YOUTUBE_COOKIES_FILE
+    return opts
+
+
 def get_video_metadata(url: str) -> dict:
     """Fetch video metadata without downloading the video."""
-    ydl_opts = {
-        "quiet": True,
-        "no_warnings": True,
-        "skip_download": True,
-        "writeinfojson": False,
-    }
+    ydl_opts = {**_base_opts(), "skip_download": True, "writeinfojson": False}
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
         return {
@@ -52,18 +53,15 @@ def get_video_metadata(url: str) -> dict:
 
 
 def download_audio(url: str, output_dir: Optional[Path] = None) -> Path:
-    """
-    Download audio-only stream for transcription.
-    Returns path to the downloaded .mp3 file.
-    """
+    """Download audio-only stream for transcription."""
     out_dir = output_dir or TRANSCRIPTS_DIR
     video_id = sanitize_id(url)
     out_path = out_dir / f"{video_id}.%(ext)s"
 
     ydl_opts = {
+        **_base_opts(),
         "format": "bestaudio/best",
         "outtmpl": str(out_path),
-        "quiet": True,
         "postprocessors": [
             {
                 "key": "FFmpegExtractAudio",
@@ -86,7 +84,7 @@ def get_auto_captions(url: str) -> Optional[list]:
     """
     video_id = sanitize_id(url)
     ydl_opts = {
-        "quiet": True,
+        **_base_opts(),
         "writeautomaticsub": True,
         "subtitlesformat": "json3",
         "subtitleslangs": ["en"],
