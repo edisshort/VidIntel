@@ -60,7 +60,13 @@ def _metadata_via_oembed(url: str) -> Optional[dict]:
 
 
 def get_video_metadata(url: str) -> dict:
-    """Fetch video metadata. Tries yt-dlp first, falls back to oEmbed API."""
+    """Fetch video metadata. Uses oEmbed first (works from any IP), yt-dlp as fallback."""
+    # oEmbed is primary — no auth, no bot detection, works on all servers
+    meta = _metadata_via_oembed(url)
+    if meta:
+        return meta
+
+    # yt-dlp fallback (works locally, may be blocked on cloud servers)
     try:
         ydl_opts = {**_base_opts(), "skip_download": True, "writeinfojson": False}
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -77,11 +83,7 @@ def get_video_metadata(url: str) -> dict:
                 "view_count": info.get("view_count", 0),
             }
     except Exception as e:
-        print(f"[Downloader] yt-dlp metadata failed ({e}), trying oEmbed...")
-        meta = _metadata_via_oembed(url)
-        if meta:
-            return meta
-        # Last resort — return minimal metadata
+        print(f"[Downloader] yt-dlp metadata also failed ({e}), using minimal metadata")
         return {
             "video_id": sanitize_id(url),
             "title": "Unknown Title",

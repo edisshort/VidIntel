@@ -53,33 +53,30 @@ def _fetch_via_transcript_api(video_id: str) -> Optional[List[TranscriptSegment]
     """
     Use youtube-transcript-api to fetch captions.
     Works from server IPs — uses YouTube's timedtext endpoint, not the main site.
+    Compatible with youtube-transcript-api >= 1.0.0
     """
     try:
-        from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound, TranscriptsDisabled
+        from youtube_transcript_api import YouTubeTranscriptApi
 
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-
-        # Try manual English first, then auto-generated
-        transcript = None
-        try:
-            transcript = transcript_list.find_manually_created_transcript(["en"])
-        except Exception:
-            pass
-        if not transcript:
+        api = YouTubeTranscriptApi()
+        # Try English first, fall back to any available language
+        fetched = None
+        for lang in (["en"], ["en-US"], ["en-GB"], None):
             try:
-                transcript = transcript_list.find_generated_transcript(["en"])
+                fetched = api.fetch(video_id, languages=lang) if lang else api.fetch(video_id)
+                break
             except Exception:
-                pass
-        if not transcript:
-            # Take whatever is available and translate
-            transcript = next(iter(transcript_list))
+                continue
 
-        data = transcript.fetch()
+        if not fetched:
+            return None
+
         segments = []
-        for i, entry in enumerate(data):
-            start = float(entry.get("start", 0))
-            duration = float(entry.get("duration", 2.0))
-            text = entry.get("text", "").strip()
+        for entry in fetched:
+            # entry is a dict-like with .text, .start, .duration
+            start = float(getattr(entry, "start", 0) if hasattr(entry, "start") else entry.get("start", 0))
+            duration = float(getattr(entry, "duration", 2.0) if hasattr(entry, "duration") else entry.get("duration", 2.0))
+            text = (getattr(entry, "text", "") if hasattr(entry, "text") else entry.get("text", "")).strip()
             if not text:
                 continue
             segments.append({
