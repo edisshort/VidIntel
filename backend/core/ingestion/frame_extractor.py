@@ -28,9 +28,7 @@ def _download_video_stream(url: str, out_dir: Path) -> Path:
     out_path = out_dir / f"{video_id}_video.%(ext)s"
 
     ydl_opts = {
-        # Simple, universally compatible selector:
-        # Try small video-only first, fall back to any best available stream
-        "format": "bestvideo[height<=360][ext=mp4]/bestvideo[height<=360]/bestvideo[ext=mp4]/bestvideo/best[height<=480]/best",
+        "format": "worstvideo[ext=mp4]/worstvideo/bestvideo[height<=360][ext=mp4]/bestvideo[height<=360]/bestvideo/worst/best",
         "outtmpl": str(out_path),
         "quiet": True,
         "no_warnings": True,

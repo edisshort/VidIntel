@@ -80,26 +80,28 @@ async def _ingest_video(
         frames_count = 0
         ocr_count = 0
 
-        # 4. Frames + OCR
+        # 4. Frames + OCR (graceful — transcript ingestion succeeds even if this fails)
         if extract_frames_flag:
-            frames = extract_frames(url, interval_sec=frame_interval)
-            frames_count = len(frames)
+            try:
+                frames = extract_frames(url, interval_sec=frame_interval)
+                frames_count = len(frames)
 
-            if run_ocr and frames:
-                ocr_chunks = process_frames_ocr(video_id, frames)
-                ocr_docs = ocr_chunks_to_documents(ocr_chunks)
+                if run_ocr and frames:
+                    ocr_chunks = process_frames_ocr(video_id, frames)
+                    ocr_docs = ocr_chunks_to_documents(ocr_chunks)
 
-                # Add video metadata to OCR docs
-                for doc in ocr_docs:
-                    doc["metadata"].update({
-                        "video_title": meta["title"],
-                        "channel": meta["channel"],
-                        "url": url,
-                    })
+                    for doc in ocr_docs:
+                        doc["metadata"].update({
+                            "video_title": meta["title"],
+                            "channel": meta["channel"],
+                            "url": url,
+                        })
 
-                upsert_documents(col_name, ocr_docs)
-                add_to_bm25_index(col_name, ocr_docs)
-                ocr_count = len(ocr_docs)
+                    upsert_documents(col_name, ocr_docs)
+                    add_to_bm25_index(col_name, ocr_docs)
+                    ocr_count = len(ocr_docs)
+            except Exception as frame_err:
+                print(f"[Ingest] Frame/OCR extraction failed (non-fatal): {frame_err}")
 
         # 5. Register
         _register_video(meta, col_name)
