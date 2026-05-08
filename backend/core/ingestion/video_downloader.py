@@ -34,21 +34,64 @@ def _base_opts() -> dict:
     return opts
 
 
-def get_video_metadata(url: str) -> dict:
-    """Fetch video metadata without downloading the video."""
-    ydl_opts = {**_base_opts(), "skip_download": True, "writeinfojson": False}
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=False)
+def _metadata_via_oembed(url: str) -> Optional[dict]:
+    """Fetch basic metadata via YouTube oEmbed API — no auth, works from any IP."""
+    try:
+        import urllib.request
+        import urllib.parse
+        oembed_url = f"https://www.youtube.com/oembed?url={urllib.parse.quote(url)}&format=json"
+        with urllib.request.urlopen(oembed_url, timeout=10) as resp:
+            data = json.loads(resp.read())
+        video_id = sanitize_id(url)
         return {
-            "video_id": info.get("id", sanitize_id(url)),
-            "title": info.get("title", "Unknown Title"),
-            "channel": info.get("uploader", "Unknown Channel"),
-            "duration_seconds": info.get("duration", 0),
+            "video_id": video_id,
+            "title": data.get("title", "Unknown Title"),
+            "channel": data.get("author_name", "Unknown Channel"),
+            "duration_seconds": 0,  # oEmbed doesn't provide duration
             "url": url,
-            "thumbnail_url": info.get("thumbnail"),
-            "description": info.get("description", ""),
-            "upload_date": info.get("upload_date", ""),
-            "view_count": info.get("view_count", 0),
+            "thumbnail_url": data.get("thumbnail_url"),
+            "description": "",
+            "upload_date": "",
+            "view_count": 0,
+        }
+    except Exception as e:
+        print(f"[Downloader] oEmbed fallback failed: {e}")
+        return None
+
+
+def get_video_metadata(url: str) -> dict:
+    """Fetch video metadata. Tries yt-dlp first, falls back to oEmbed API."""
+    try:
+        ydl_opts = {**_base_opts(), "skip_download": True, "writeinfojson": False}
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            return {
+                "video_id": info.get("id", sanitize_id(url)),
+                "title": info.get("title", "Unknown Title"),
+                "channel": info.get("uploader", "Unknown Channel"),
+                "duration_seconds": info.get("duration", 0),
+                "url": url,
+                "thumbnail_url": info.get("thumbnail"),
+                "description": info.get("description", ""),
+                "upload_date": info.get("upload_date", ""),
+                "view_count": info.get("view_count", 0),
+            }
+    except Exception as e:
+        print(f"[Downloader] yt-dlp metadata failed ({e}), trying oEmbed...")
+        meta = _metadata_via_oembed(url)
+        if meta:
+            return meta
+        # Last resort — return minimal metadata
+        return {
+            "video_id": sanitize_id(url),
+            "title": "Unknown Title",
+            "channel": "Unknown Channel",
+            "duration_seconds": 0,
+            "url": url,
+            "thumbnail_url": None,
+            "description": "",
+            "upload_date": "",
+            "view_count": 0,
         }
 
 

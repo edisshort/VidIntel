@@ -1,12 +1,9 @@
 """
 VidIntel AI — Transcript Extractor
-Strategy:
-  1. Try YouTube auto-captions via yt-dlp (fastest, free, timestamped).
-  2. Fall back to Groq's Whisper API (same GROQ_API_KEY, no local model needed).
-
-Groq's whisper-large-v3 endpoint is free-tier, very fast, and requires
-zero local dependencies — no FFmpeg headers, no CUDA, no model downloads.
-Each segment: {"start": float, "end": float, "text": str}
+Strategy (in order):
+  1. youtube-transcript-api  — hits YouTube's timedtext API, works from servers
+  2. yt-dlp auto-captions    — fallback if transcript API fails
+  3. Groq Whisper API        — last resort for videos with no captions at all
 """
 
 import json
@@ -21,9 +18,7 @@ from core.ingestion.video_downloader import (
 )
 
 
-# ─── Types ─────────────────────────────────────────────────────────────────────
-
-TranscriptSegment = dict   # {"start": float, "end": float, "text": str}
+TranscriptSegment = dict  # {"start": float, "end": float, "text": str}
 
 
 # ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -52,45 +47,84 @@ def _load_cached(video_id: str) -> Optional[List[TranscriptSegment]]:
     return None
 
 
-# ─── Caption-based (fast path) ─────────────────────────────────────────────────
+# ─── Method 1: youtube-transcript-api ─────────────────────────────────────────
 
-def _captions_to_segments(
-    captions: list, gap_threshold: float = 2.0
-) -> List[TranscriptSegment]:
+def _fetch_via_transcript_api(video_id: str) -> Optional[List[TranscriptSegment]]:
     """
-    Merge raw caption events into proper segments with start/end times.
+    Use youtube-transcript-api to fetch captions.
+    Works from server IPs — uses YouTube's timedtext endpoint, not the main site.
     """
+    try:
+        from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound, TranscriptsDisabled
+
+        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+
+        # Try manual English first, then auto-generated
+        transcript = None
+        try:
+            transcript = transcript_list.find_manually_created_transcript(["en"])
+        except Exception:
+            pass
+        if not transcript:
+            try:
+                transcript = transcript_list.find_generated_transcript(["en"])
+            except Exception:
+                pass
+        if not transcript:
+            # Take whatever is available and translate
+            transcript = next(iter(transcript_list))
+
+        data = transcript.fetch()
+        segments = []
+        for i, entry in enumerate(data):
+            start = float(entry.get("start", 0))
+            duration = float(entry.get("duration", 2.0))
+            text = entry.get("text", "").strip()
+            if not text:
+                continue
+            segments.append({
+                "start": start,
+                "end": start + duration,
+                "text": text,
+                "timestamp_label": _format_timestamp(start),
+                "source": "youtube-transcript-api",
+            })
+
+        print(f"[Transcript] youtube-transcript-api: {len(segments)} segments")
+        return segments if segments else None
+
+    except Exception as e:
+        print(f"[Transcript] youtube-transcript-api failed: {e}")
+        return None
+
+
+# ─── Method 2: yt-dlp captions ────────────────────────────────────────────────
+
+def _captions_to_segments(captions: list) -> List[TranscriptSegment]:
     segments = []
     for i, cap in enumerate(captions):
         start = cap["start"]
         end = captions[i + 1]["start"] if i + 1 < len(captions) else start + 3.0
-        segments.append(
-            {
-                "start": start,
-                "end": end,
-                "text": cap["text"].strip(),
-                "timestamp_label": _format_timestamp(start),
-                "source": "captions",
-            }
-        )
+        segments.append({
+            "start": start,
+            "end": end,
+            "text": cap["text"].strip(),
+            "timestamp_label": _format_timestamp(start),
+            "source": "captions",
+        })
     return segments
 
 
-# ─── Whisper fallback via Groq API ────────────────────────────────────────────
+# ─── Method 3: Groq Whisper ───────────────────────────────────────────────────
 
 def _transcribe_with_groq(audio_path: Path) -> List[TranscriptSegment]:
-    """
-    Transcribe audio using Groq's Whisper API.
-    Uses the same GROQ_API_KEY — no local model, no FFmpeg, no compilation.
-    Returns timestamped segments using verbose_json response format.
-    """
     from groq import Groq
 
     if not GROQ_API_KEY:
-        raise ValueError("GROQ_API_KEY not set — cannot use Groq Whisper fallback.")
+        raise ValueError("GROQ_API_KEY not set.")
 
     client = Groq(api_key=GROQ_API_KEY)
-    print(f"[Whisper/Groq] Transcribing {audio_path.name} via Groq API...")
+    print(f"[Whisper/Groq] Transcribing {audio_path.name}...")
 
     with open(audio_path, "rb") as f:
         response = client.audio.transcriptions.create(
@@ -101,33 +135,26 @@ def _transcribe_with_groq(audio_path: Path) -> List[TranscriptSegment]:
         )
 
     segments = []
-    # verbose_json returns .segments list with start/end/text
     raw_segments = getattr(response, "segments", None) or []
     for seg in raw_segments:
         start = seg.get("start", 0.0) if isinstance(seg, dict) else getattr(seg, "start", 0.0)
-        end   = seg.get("end",   start + 2.0) if isinstance(seg, dict) else getattr(seg, "end", start + 2.0)
+        end   = seg.get("end", start + 2.0) if isinstance(seg, dict) else getattr(seg, "end", start + 2.0)
         text  = seg.get("text", "") if isinstance(seg, dict) else getattr(seg, "text", "")
-        segments.append(
-            {
-                "start": float(start),
-                "end":   float(end),
-                "text":  text.strip(),
-                "timestamp_label": _format_timestamp(float(start)),
-                "source": "whisper-groq",
-            }
-        )
+        segments.append({
+            "start": float(start),
+            "end": float(end),
+            "text": text.strip(),
+            "timestamp_label": _format_timestamp(float(start)),
+            "source": "whisper-groq",
+        })
 
-    # Fallback: if no segments returned, make one chunk from full text
     if not segments and hasattr(response, "text") and response.text:
-        segments.append(
-            {
-                "start": 0.0,
-                "end":   0.0,
-                "text":  response.text.strip(),
-                "timestamp_label": "0:00",
-                "source": "whisper-groq",
-            }
-        )
+        segments.append({
+            "start": 0.0, "end": 0.0,
+            "text": response.text.strip(),
+            "timestamp_label": "0:00",
+            "source": "whisper-groq",
+        })
 
     return segments
 
@@ -136,12 +163,10 @@ def _transcribe_with_groq(audio_path: Path) -> List[TranscriptSegment]:
 
 def extract_transcript(url: str, force_whisper: bool = False) -> List[TranscriptSegment]:
     """
-    Main entry point. Returns list of transcript segments with timestamps.
-    Caches result to disk for re-use.
+    Main entry point. Tries three methods in order, caches result to disk.
     """
     video_id = sanitize_id(url)
 
-    # Check cache
     cached = _load_cached(video_id)
     if cached:
         print(f"[Transcript] Using cached transcript for {video_id}")
@@ -149,19 +174,22 @@ def extract_transcript(url: str, force_whisper: bool = False) -> List[Transcript
 
     segments: List[TranscriptSegment] = []
 
-    # Try auto-captions first (unless whisper forced)
     if not force_whisper:
-        captions = get_auto_captions(url)
-        if captions:
-            print(f"[Transcript] Using auto-captions for {video_id}")
-            segments = _captions_to_segments(captions)
+        # Method 1 — youtube-transcript-api (server-safe)
+        segments = _fetch_via_transcript_api(video_id) or []
 
-    # Groq Whisper fallback (for videos without auto-captions)
+        # Method 2 — yt-dlp captions fallback
+        if not segments:
+            print(f"[Transcript] Trying yt-dlp captions for {video_id}")
+            captions = get_auto_captions(url)
+            if captions:
+                segments = _captions_to_segments(captions)
+
+    # Method 3 — Groq Whisper (needs audio download + ffmpeg)
     if not segments:
-        print(f"[Transcript] Falling back to Groq Whisper API for {video_id}")
+        print(f"[Transcript] Falling back to Groq Whisper for {video_id}")
         audio_path = download_audio(url)
         segments = _transcribe_with_groq(audio_path)
-        # Clean up downloaded audio
         audio_path.unlink(missing_ok=True)
 
     _save_transcript(video_id, segments)
@@ -169,5 +197,4 @@ def extract_transcript(url: str, force_whisper: bool = False) -> List[Transcript
 
 
 def get_full_text(segments: List[TranscriptSegment]) -> str:
-    """Concatenate all segment texts into one string."""
     return " ".join(s["text"] for s in segments)

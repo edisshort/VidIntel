@@ -16,6 +16,7 @@ rank-bm25==0.2.2
 
 # ─── Video / Transcript ────────────────────────────────────────────────────────
 yt-dlp>=2024.11.4
+youtube-transcript-api>=0.6.2
 # No local Whisper model needed — uses Groq's Whisper API as fallback
 # (same GROQ_API_KEY, no FFmpeg build deps, no av/ctranslate2 compile issues)
 
