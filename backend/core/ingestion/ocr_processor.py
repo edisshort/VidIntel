@@ -5,12 +5,16 @@ Produces text chunks with timestamps for Visual RAG.
 """
 
 import json
+import os
 import re
 from pathlib import Path
 from typing import List, Optional
 
 from config import OCR_ENGINE, OCR_MIN_CONFIDENCE, FRAMES_DIR
 from core.ingestion.video_downloader import sanitize_id
+
+# Skip OCR entirely on server deployments where EasyOCR would OOM
+_OCR_DISABLED = os.getenv("DISABLE_OCR", "false").lower() == "true"
 
 # ─── YouTube UI noise filter ───────────────────────────────────────────────────
 # These words/phrases appear in almost every YouTube frame and add no signal
@@ -103,6 +107,10 @@ def process_frames_ocr(
         "source": "ocr"
       }
     """
+    if _OCR_DISABLED:
+        print("[OCR] Disabled via DISABLE_OCR env var — skipping.")
+        return []
+
     cache_path = FRAMES_DIR / video_id / "ocr_results.json"
 
     # Return cached results if available
