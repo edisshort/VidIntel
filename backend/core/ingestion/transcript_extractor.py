@@ -203,24 +203,22 @@ def extract_transcript(url: str, force_whisper: bool = False) -> List[Transcript
         # Method 1 — youtube-transcript-api (server-safe, no bot detection)
         segments = _fetch_via_transcript_api(video_id) or []
 
-        # Method 2 — yt-dlp captions (local only)
-        if not segments and not _SERVER_MODE:
+        # Method 2 — yt-dlp captions with TV client (bypasses bot detection)
+        if not segments:
             print(f"[Transcript] Trying yt-dlp captions for {video_id}")
             captions = get_auto_captions(url)
             if captions:
                 segments = _captions_to_segments(captions)
 
-    # Method 3 — Groq Whisper
+    # Method 3 — Groq Whisper via audio download
     if not segments:
         audio_path = None
-        if _SERVER_MODE:
-            # Server: use pytubefix (handles bot detection better than yt-dlp)
-            print(f"[Transcript] Trying pytubefix + Groq Whisper for {video_id}")
-            audio_path = _download_audio_pytubefix(video_id)
-        else:
-            # Local: use yt-dlp
-            print(f"[Transcript] Falling back to Groq Whisper for {video_id}")
+        print(f"[Transcript] Trying audio download + Groq Whisper for {video_id}")
+        try:
             audio_path = download_audio(url)
+        except Exception:
+            # Last attempt: pytubefix
+            audio_path = _download_audio_pytubefix(video_id)
 
         if audio_path and audio_path.exists():
             segments = _transcribe_with_groq(audio_path)

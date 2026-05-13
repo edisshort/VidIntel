@@ -30,8 +30,12 @@ def sanitize_id(url: str) -> str:
 
 
 def _base_opts() -> dict:
-    """Base yt-dlp options shared across all calls (includes cookies if set)."""
-    opts = {"quiet": True, "no_warnings": True}
+    """Base yt-dlp options. Uses YouTube's TV client to bypass bot detection on servers."""
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "extractor_args": {"youtube": {"player_client": ["tv_embedded", "web"]}},
+    }
     if YOUTUBE_COOKIES_FILE:
         opts["cookiefile"] = YOUTUBE_COOKIES_FILE
     return opts
