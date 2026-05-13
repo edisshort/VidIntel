@@ -117,6 +117,29 @@ def _captions_to_segments(captions: list) -> List[TranscriptSegment]:
     return segments
 
 
+# ─── Method 2b: pytubefix audio download (server-safe alternative to yt-dlp) ──
+
+def _download_audio_pytubefix(video_id: str) -> Optional[Path]:
+    """
+    Download audio using pytubefix — handles YouTube bot detection better than
+    yt-dlp on cloud server IPs. Used as server-safe audio source for Whisper.
+    """
+    try:
+        from pytubefix import YouTube
+        url = f"https://www.youtube.com/watch?v={video_id}"
+        print(f"[pytubefix] Downloading audio for {video_id}...")
+        yt = YouTube(url, use_oauth=False, allow_oauth_cache=False)
+        audio_stream = yt.streams.filter(only_audio=True).order_by("abr").last()
+        if not audio_stream:
+            return None
+        out_path = TRANSCRIPTS_DIR / f"{video_id}_pytube.mp4"
+        audio_stream.download(output_path=str(TRANSCRIPTS_DIR), filename=f"{video_id}_pytube.mp4")
+        return out_path if out_path.exists() else None
+    except Exception as e:
+        print(f"[pytubefix] Download failed: {e}")
+        return None
+
+
 # ─── Method 3: Groq Whisper ───────────────────────────────────────────────────
 
 def _transcribe_with_groq(audio_path: Path) -> List[TranscriptSegment]:
@@ -177,27 +200,36 @@ def extract_transcript(url: str, force_whisper: bool = False) -> List[Transcript
     segments: List[TranscriptSegment] = []
 
     if not force_whisper:
-        # Method 1 — youtube-transcript-api (works on all servers, no bot detection)
+        # Method 1 — youtube-transcript-api (server-safe, no bot detection)
         segments = _fetch_via_transcript_api(video_id) or []
 
-        # Method 2 — yt-dlp captions (local only — blocked on cloud servers)
+        # Method 2 — yt-dlp captions (local only)
         if not segments and not _SERVER_MODE:
             print(f"[Transcript] Trying yt-dlp captions for {video_id}")
             captions = get_auto_captions(url)
             if captions:
                 segments = _captions_to_segments(captions)
 
-    # Method 3 — Groq Whisper via audio download (local only — needs yt-dlp)
-    if not segments and not _SERVER_MODE:
-        print(f"[Transcript] Falling back to Groq Whisper for {video_id}")
-        audio_path = download_audio(url)
-        segments = _transcribe_with_groq(audio_path)
-        audio_path.unlink(missing_ok=True)
+    # Method 3 — Groq Whisper
+    if not segments:
+        audio_path = None
+        if _SERVER_MODE:
+            # Server: use pytubefix (handles bot detection better than yt-dlp)
+            print(f"[Transcript] Trying pytubefix + Groq Whisper for {video_id}")
+            audio_path = _download_audio_pytubefix(video_id)
+        else:
+            # Local: use yt-dlp
+            print(f"[Transcript] Falling back to Groq Whisper for {video_id}")
+            audio_path = download_audio(url)
+
+        if audio_path and audio_path.exists():
+            segments = _transcribe_with_groq(audio_path)
+            audio_path.unlink(missing_ok=True)
 
     if not segments:
         raise ValueError(
             f"Could not extract transcript for video '{video_id}'. "
-            "The video may have no captions, be private, or region-restricted."
+            "The video may be private, region-restricted, or have no audio."
         )
 
     _save_transcript(video_id, segments)
