@@ -4,12 +4,15 @@ Uses yt-dlp to extract metadata and audio from YouTube (and other platforms).
 """
 
 import json
+import os
 import re
 from pathlib import Path
 from typing import Optional
 import yt_dlp
 
 from config import TRANSCRIPTS_DIR, YOUTUBE_COOKIES_FILE
+
+_SERVER_MODE = os.getenv("SERVER_MODE", "false").lower() == "true"
 
 
 def sanitize_id(url: str) -> str:
@@ -66,7 +69,22 @@ def get_video_metadata(url: str) -> dict:
     if meta:
         return meta
 
-    # yt-dlp fallback (works locally, may be blocked on cloud servers)
+    # yt-dlp fallback — skip entirely in server mode (blocked by YouTube)
+    if _SERVER_MODE:
+        video_id = sanitize_id(url)
+        print(f"[Downloader] SERVER_MODE: oEmbed failed, using minimal metadata for {video_id}")
+        return {
+            "video_id": video_id,
+            "title": f"Video {video_id}",
+            "channel": "Unknown",
+            "duration_seconds": 0,
+            "url": url,
+            "thumbnail_url": None,
+            "description": "",
+            "upload_date": "",
+            "view_count": 0,
+        }
+
     try:
         ydl_opts = {**_base_opts(), "skip_download": True, "writeinfojson": False}
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:

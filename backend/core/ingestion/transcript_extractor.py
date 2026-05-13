@@ -7,6 +7,7 @@ Strategy (in order):
 """
 
 import json
+import os
 from pathlib import Path
 from typing import List, Optional
 
@@ -16,6 +17,10 @@ from core.ingestion.video_downloader import (
     download_audio,
     sanitize_id,
 )
+
+# On cloud servers, yt-dlp is blocked by YouTube bot detection.
+# SERVER_MODE skips all yt-dlp calls — only youtube-transcript-api is used.
+_SERVER_MODE = os.getenv("SERVER_MODE", "false").lower() == "true"
 
 
 TranscriptSegment = dict  # {"start": float, "end": float, "text": str}
@@ -172,22 +177,28 @@ def extract_transcript(url: str, force_whisper: bool = False) -> List[Transcript
     segments: List[TranscriptSegment] = []
 
     if not force_whisper:
-        # Method 1 — youtube-transcript-api (server-safe)
+        # Method 1 — youtube-transcript-api (works on all servers, no bot detection)
         segments = _fetch_via_transcript_api(video_id) or []
 
-        # Method 2 — yt-dlp captions fallback
-        if not segments:
+        # Method 2 — yt-dlp captions (local only — blocked on cloud servers)
+        if not segments and not _SERVER_MODE:
             print(f"[Transcript] Trying yt-dlp captions for {video_id}")
             captions = get_auto_captions(url)
             if captions:
                 segments = _captions_to_segments(captions)
 
-    # Method 3 — Groq Whisper (needs audio download + ffmpeg)
-    if not segments:
+    # Method 3 — Groq Whisper via audio download (local only — needs yt-dlp)
+    if not segments and not _SERVER_MODE:
         print(f"[Transcript] Falling back to Groq Whisper for {video_id}")
         audio_path = download_audio(url)
         segments = _transcribe_with_groq(audio_path)
         audio_path.unlink(missing_ok=True)
+
+    if not segments:
+        raise ValueError(
+            f"Could not extract transcript for video '{video_id}'. "
+            "The video may have no captions, be private, or region-restricted."
+        )
 
     _save_transcript(video_id, segments)
     return segments
